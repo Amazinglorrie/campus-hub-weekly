@@ -1,0 +1,747 @@
+# Week 9: Local Storage
+
+## Persisting Data with AsyncStorage in React Native
+
+---
+
+## Table of Contents
+
+1. [Before vs After](#before-vs-after)
+2. [Architecture Impact](#architecture-impact)
+3. [New Concepts](#new-concepts)
+4. [Step-by-Step Implementation](#step-by-step)
+5. [Common Mistakes](#common-mistakes)
+6. [Student Challenge](#student-challenge)
+
+---
+
+## Before vs After <a name="before-vs-after"></a>
+
+### Before (Week 8)
+
+```
+Settings tab
+├── Notifications toggle (works... until you leave the screen)
+└── Account → Edit Profile form
+    ├── 5 validated fields (work... until you leave the screen)
+    └── Save button shows an alert, but data vanishes
+```
+
+The app has a form that validates correctly, but nothing is remembered. Close the app, reopen it — every field is blank again. Toggle notifications off, switch tabs, come back — it's on again. The app has amnesia.
+
+### After (Week 9)
+
+```
+Settings tab
+├── Notifications toggle (PERSISTS across app restarts)
+└── Account → Profile screen
+    ├── VIEW MODE (when data exists)
+    │   ├── Shows saved data as read-only text in a card
+    │   └── "Edit Profile" button → switches to edit mode
+    │
+    └── EDIT MODE (first visit, or after tapping Edit)
+        ├── 5 validated fields (PRE-FILLED with saved data)
+        ├── "Save Profile" button → saves data + switches to view mode
+        └── "Cancel" button → discards changes + returns to view mode
+```
+
+Now the app remembers. Toggle notifications off → close the app → reopen → still off. Fill in your profile → save → see your data displayed cleanly → come back later → still there. The app has memory.
+
+---
+
+## Architecture Impact <a name="architecture-impact"></a>
+
+### New File
+
+```
+lib/
+└── storage.ts    ← NEW: utility for reading/writing to device storage
+```
+
+### Modified Files
+
+```
+app/(tab)/settings/index.tsx     ← MODIFIED: loads + saves notification toggle
+app/(tab)/settings/profile.tsx   ← MODIFIED: loads + saves profile data
+```
+
+### Updated Architecture Diagram
+
+```
+    app/_layout.tsx .................. Stack (Root)
+        |
+        └── app/(tab)/_layout.tsx ... Tabs
+                |
+                ├── home.tsx ........ Tab Screen (simple)
+                |
+                ├── courses/_layout.tsx .. Stack (Nested)
+                |       |
+                |       ├── index.tsx ... Courses list
+                |       └── [id].tsx .... Course details
+                |
+                └── settings/_layout.tsx . Stack (Nested)
+                        |
+                        ├── index.tsx ... Settings list (now loads/saves toggle)
+                        └── profile.tsx . Edit Profile (now loads/saves data)
+
+    lib/
+    └── storage.ts .................. Storage utility (NEW)
+```
+
+### Why a Storage Utility?
+
+AsyncStorage only stores strings. Every time you save an object, you need `JSON.stringify()`. Every time you read it back, you need `JSON.parse()`. Writing this boilerplate in every component is repetitive and error-prone.
+
+Instead, we create a **utility module** — a file with helper functions that wrap the repetitive parts. Components call `storage.get()` and `storage.set()` without thinking about JSON.
+
+```
+Without utility (repetitive):              With utility (clean):
+──────────────────────────                 ─────────────────────
+const json = await AsyncStorage            const data = await storage.get("profile");
+  .getItem("profile");
+const data = json
+  ? JSON.parse(json) : null;
+```
+
+---
+
+## New Concepts <a name="new-concepts"></a>
+
+### 1. AsyncStorage — Your App's Notepad
+
+Think of AsyncStorage as a notepad that lives on the user's device. Your app can write notes (save data) and read them later (load data). The notepad survives even when the app is closed — it's stored on the device's file system, not in memory.
+
+```
+┌─────────────────────────────────────────────┐
+│              AsyncStorage                    │
+│                                             │
+│   Key               Value                   │
+│   ───               ─────                   │
+│   "notifications"   true                     │
+│   "profile"         { firstName: "Jane",     │
+│                       lastName: "Smith",      │
+│                       email: "jane@edu.ca",  │
+│                       studentId: "A00123456",│
+│                       phone: "(403)555-0123"}│
+│                                             │
+│   Everything is stored as strings            │
+│   (JSON.stringify on write, JSON.parse on read) │
+└─────────────────────────────────────────────┘
+```
+
+**Key facts:**
+- It's a **key-value store** — like a dictionary. You save data under a key name, then retrieve it using that same key.
+- It stores **strings only** — objects and booleans must be converted to/from JSON strings.
+- It's **async** — every operation returns a Promise, so you use `await`.
+- It's **not secure** — don't store passwords or tokens here. (We'll learn about secure storage in Week 12.)
+- It's **persistent** — data survives app restarts, but not app uninstalls.
+
+### 2. useEffect — Running Code When a Component Mounts
+
+Until now, every line of code in your components ran on every render. But loading data from storage should only happen **once** — when the component first appears on screen. That's what `useEffect` does.
+
+```
+    Component renders for the first time
+              │
+              ▼
+    useEffect runs (loads data from storage)
+              │
+              ▼
+    Data arrives → setState → component re-renders with data
+              │
+              ▼
+    useEffect does NOT run again (empty dependency array)
+```
+
+**The syntax:**
+
+```tsx
+useEffect(() => {
+  // This code runs ONCE after the first render
+}, []);
+//  ^^ empty array = "no dependencies" = "only run on mount"
+```
+
+**The empty array `[]`** is called the dependency array. It tells React: "There's nothing this effect depends on, so only run it once." If you forget the `[]`, the effect runs on **every** render — which means infinite loops if the effect updates state.
+
+### 3. Async Functions Inside useEffect
+
+`useEffect` does not support `async` directly. You can't write `useEffect(async () => { ... })`. Instead, define an async function inside and call it immediately:
+
+```tsx
+// ❌ WRONG — useEffect can't be async
+useEffect(async () => {
+  const data = await storage.get("profile");
+}, []);
+
+// ✅ CORRECT — define async function inside, then call it
+useEffect(() => {
+  async function loadProfile() {
+    const data = await storage.get("profile");
+    if (data) setFirstName(data.firstName);
+  }
+  loadProfile();
+}, []);
+```
+
+**Why this pattern?** `useEffect` can return a cleanup function (for later weeks). If it were `async`, it would return a Promise instead, which React doesn't know how to clean up. So the workaround is to put the async logic in a nested function.
+
+### 4. Loading State — Preventing the Flash
+
+Without a loading state, here's what happens:
+
+```
+1. Component renders → shows empty form (fields blank)
+2. useEffect fires → starts loading from storage
+3. Data arrives → fields fill in
+```
+
+The user sees a brief flash of empty fields before data appears. This looks buggy. The fix:
+
+```
+1. Component renders → isLoading is true → shows spinner
+2. useEffect fires → loads data → sets fields → sets isLoading to false
+3. Component re-renders → shows filled form (no flash)
+```
+
+```tsx
+const [isLoading, setIsLoading] = useState(true);
+
+useEffect(() => {
+  async function load() {
+    const data = await storage.get("profile");
+    if (data) { /* populate fields */ }
+    setIsLoading(false);  // Done loading, show the form
+  }
+  load();
+}, []);
+
+if (isLoading) {
+  return <ActivityIndicator />;  // Show spinner while loading
+}
+
+return (
+  // ... your actual form
+);
+```
+
+### 5. Secure vs Regular Storage (Conceptual)
+
+| | AsyncStorage | SecureStore |
+|--|-------------|-------------|
+| **What it stores** | Preferences, cached data | Passwords, tokens, secrets |
+| **Security** | Plain text on device | Encrypted (uses device keychain) |
+| **Speed** | Fast | Slightly slower (encryption overhead) |
+| **When to use** | User preferences, form data, settings | Login tokens, API keys, sensitive data |
+
+We use AsyncStorage this week because profile data and notification preferences aren't sensitive. In Week 12 (Auth), we'll use secure storage for authentication tokens.
+
+---
+
+## Step-by-Step Implementation <a name="step-by-step"></a>
+
+### Step 1: Install AsyncStorage
+
+Run this command in your terminal:
+
+```bash
+npx expo install @react-native-async-storage/async-storage
+```
+
+**Why `npx expo install` instead of `npm install`?** Expo ensures you get a version compatible with your Expo SDK. Regular `npm install` might grab a version that doesn't work.
+
+---
+
+### Step 2: Create the Storage Utility
+
+**File:** `lib/storage.ts`
+
+Create a new `lib/` folder in your project root, then create `storage.ts` inside it.
+
+```ts
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+// Typed key names to prevent typos
+export const STORAGE_KEYS = {
+  PROFILE: "profile",
+  NOTIFICATIONS: "notifications",
+} as const;
+
+// Get a value from storage (automatically parses JSON)
+export async function get<T>(key: string): Promise<T | null> {
+  const value = await AsyncStorage.getItem(key);
+  if (value === null) return null;
+  return JSON.parse(value) as T;
+}
+
+// Set a value in storage (automatically stringifies to JSON)
+export async function set(key: string, value: unknown): Promise<void> {
+  await AsyncStorage.setItem(key, JSON.stringify(value));
+}
+
+// Remove a value from storage
+export async function remove(key: string): Promise<void> {
+  await AsyncStorage.removeItem(key);
+}
+```
+
+**Breaking it down:**
+
+| Function | What it does | Why it exists |
+|----------|-------------|---------------|
+| `get<T>(key)` | Reads a value and parses it from JSON | Without this, you'd write `JSON.parse(await AsyncStorage.getItem(key))` everywhere |
+| `set(key, value)` | Stringifies a value and saves it | Without this, you'd write `AsyncStorage.setItem(key, JSON.stringify(value))` everywhere |
+| `remove(key)` | Deletes a key from storage | Clean wrapper — useful for logout or clearing data |
+| `STORAGE_KEYS` | Named constants for key strings | Prevents typos — `STORAGE_KEYS.PROFILE` is safer than `"proflie"` |
+
+**The `<T>` in `get<T>`** is a TypeScript generic. It tells the function what type to return. When you call `storage.get<boolean>("notifications")`, TypeScript knows the result is `boolean | null`. When you call `storage.get<ProfileData>("profile")`, TypeScript knows it's `ProfileData | null`.
+
+**The `as const`** on `STORAGE_KEYS` makes the values readonly and narrows their types from `string` to the literal string values (`"profile"`, `"notifications"`). This prevents accidental reassignment.
+
+---
+
+### Step 3: Persist the Notifications Toggle
+
+**File:** `app/(tab)/settings/index.tsx`
+
+Three changes to the existing file:
+
+#### 3a. Add imports
+
+```tsx
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import * as storage from "../../../lib/storage";
+import { STORAGE_KEYS } from "../../../lib/storage";
+```
+
+New additions: `useEffect` from React, `ActivityIndicator` from React Native, and our storage utility.
+
+#### 3b. Add loading state and useEffect
+
+```tsx
+export default function Settings() {
+  const [notifications, setNotifications] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load saved notification preference on mount
+  useEffect(() => {
+    async function loadNotifications() {
+      const saved = await storage.get<boolean>(STORAGE_KEYS.NOTIFICATIONS);
+      if (saved !== null) {
+        setNotifications(saved);
+      }
+      setIsLoading(false);
+    }
+    loadNotifications();
+  }, []);
+```
+
+**What happens here:**
+1. `isLoading` starts as `true` — the component shows a spinner
+2. `useEffect` fires after the first render
+3. Inside, `loadNotifications` reads from storage
+4. If a saved value exists (`saved !== null`), it updates the toggle
+5. `setIsLoading(false)` hides the spinner and shows the real UI
+
+**Why `if (saved !== null)`?** The first time the app runs, there's nothing in storage. `get()` returns `null`. We don't want to set notifications to `null` — we keep the default `true`.
+
+#### 3c. Save on toggle
+
+Replace the direct `setNotifications` with a handler that also saves:
+
+```tsx
+  // Save notification preference when toggled
+  async function handleToggle(value: boolean) {
+    setNotifications(value);
+    await storage.set(STORAGE_KEYS.NOTIFICATIONS, value);
+  }
+```
+
+And update the Switch:
+
+```tsx
+<Switch value={notifications} onValueChange={handleToggle} />
+```
+
+**Before:** `onValueChange={setNotifications}` — only updated state (lost on unmount).
+**After:** `onValueChange={handleToggle}` — updates state AND saves to storage.
+
+#### 3d. Add loading spinner
+
+```tsx
+  if (isLoading) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
+```
+
+This goes right before the main `return`. When `isLoading` is `true`, the component returns early with just a spinner. Once loading finishes, it returns the normal UI.
+
+---
+
+### Step 4: Persist Profile Data with View/Edit Mode
+
+**File:** `app/(tab)/settings/profile.tsx`
+
+This is the biggest change this week. We're not just adding persistence — we're also adding a **view/edit mode split**. When a user opens the profile screen and data already exists, they see a clean read-only view. They tap "Edit Profile" to switch to the form. This matches how real apps (Instagram, LinkedIn, your phone's Settings) handle profile screens.
+
+#### 4a. Add imports and types
+
+```tsx
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import * as storage from "../../../lib/storage";
+import { STORAGE_KEYS } from "../../../lib/storage";
+
+type ProfileData = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  studentId: string;
+  phone: string;
+};
+```
+
+Notice: no `Alert` or `router` imports needed anymore. The save action switches to view mode instead of showing an alert and navigating away. The user sees their data displayed — that **is** the confirmation.
+
+`ProfileData` defines the shape of what we save to storage. This ensures type safety — when we read from storage, TypeScript knows exactly what fields to expect.
+
+#### 4b. Add new state variables
+
+```tsx
+  const [isLoading, setIsLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [hasSavedData, setHasSavedData] = useState(false);
+```
+
+Three new pieces of state:
+
+| State | Purpose |
+|-------|---------|
+| `isLoading` | Shows spinner while loading from storage (same as notifications) |
+| `isEditing` | Controls which mode is displayed — `false` = view, `true` = edit |
+| `hasSavedData` | Tracks if a profile has been saved before — controls whether Cancel button appears |
+
+#### 4c. Load data and decide the initial mode
+
+```tsx
+  useEffect(() => {
+    async function loadProfile() {
+      const saved = await storage.get<ProfileData>(STORAGE_KEYS.PROFILE);
+      if (saved !== null) {
+        setFirstName(saved.firstName);
+        setLastName(saved.lastName);
+        setEmail(saved.email);
+        setStudentId(saved.studentId);
+        setPhone(saved.phone);
+        setHasSavedData(true);
+      } else {
+        setIsEditing(true);
+      }
+      setIsLoading(false);
+    }
+    loadProfile();
+  }, []);
+```
+
+**What's different from notifications:** The `useEffect` now decides the initial mode. If saved data exists, the component stays in view mode (`isEditing` defaults to `false`) and sets `hasSavedData` to `true`. If no data exists (first visit), it switches to edit mode so the user sees the form right away.
+
+#### 4d. Update handleSubmit — save and switch to view mode
+
+```tsx
+  async function handleSubmit() {
+    if (!validate()) return;
+
+    const profileData: ProfileData = {
+      firstName, lastName, email, studentId, phone,
+    };
+    await storage.set(STORAGE_KEYS.PROFILE, profileData);
+
+    setErrors({});
+    setHasSavedData(true);
+    setIsEditing(false);  // Switch to view mode — the view IS the confirmation
+  }
+```
+
+**Changes from Week 8:**
+- `handleSubmit` is now `async` (because `storage.set` returns a Promise)
+- After validation passes, we save to storage
+- Instead of an alert + navigate back, we clear errors and switch to view mode
+- `setHasSavedData(true)` ensures the Cancel button appears if they edit again
+
+#### 4e. Add handleCancel — discard changes
+
+```tsx
+  async function handleCancel() {
+    const saved = await storage.get<ProfileData>(STORAGE_KEYS.PROFILE);
+    if (saved !== null) {
+      setFirstName(saved.firstName);
+      setLastName(saved.lastName);
+      setEmail(saved.email);
+      setStudentId(saved.studentId);
+      setPhone(saved.phone);
+    }
+    setErrors({});
+    setIsEditing(false);
+  }
+```
+
+Cancel reloads the saved data from storage (discarding any edits the user made to the form fields), clears any validation errors, and switches back to view mode. This only appears when `hasSavedData` is `true` — if the user hasn't saved anything yet, there's nothing to cancel back to.
+
+#### 4f. Render view mode
+
+```tsx
+  // VIEW MODE — show saved profile data
+  if (!isEditing) {
+    return (
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <Text style={styles.h1}>My Profile</Text>
+
+        <View style={styles.profileCard}>
+          <View style={styles.profileRow}>
+            <Text style={styles.profileLabel}>First Name</Text>
+            <Text style={styles.profileValue}>{firstName}</Text>
+          </View>
+          <View style={styles.divider} />
+          {/* ... same pattern for lastName, email, studentId, phone ... */}
+        </View>
+
+        <Pressable style={styles.button} onPress={() => setIsEditing(true)}>
+          <Text style={styles.buttonText}>Edit Profile</Text>
+        </Pressable>
+      </ScrollView>
+    );
+  }
+```
+
+View mode displays each field as a label + value pair inside a card. The card uses `overflow: "hidden"` so the `divider` lines don't bleed outside the rounded corners. The "Edit Profile" button at the bottom switches to edit mode.
+
+**New styles for view mode:**
+
+```tsx
+  profileCard: {
+    backgroundColor: theme.colors.card,
+    borderRadius: theme.radius.card,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    overflow: "hidden",
+  },
+  profileRow: { padding: 16 },
+  profileLabel: { fontSize: 13, color: theme.colors.muted, marginBottom: 4 },
+  profileValue: { fontSize: 16, color: theme.colors.text, fontWeight: "500" },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border },
+```
+
+#### 4g. Update edit mode buttons — Save + Cancel
+
+When the user has saved data before (`hasSavedData`), show both Cancel and Save side by side. When it's a fresh profile (first visit), show only Save.
+
+```tsx
+  {hasSavedData ? (
+    <View style={styles.buttonRow}>
+      <Pressable style={styles.cancelButton} onPress={handleCancel}>
+        <Text style={styles.cancelButtonText}>Cancel</Text>
+      </Pressable>
+      <Pressable
+        style={[styles.saveButton, !isFormFilled && styles.buttonDisabled]}
+        onPress={handleSubmit}
+        disabled={!isFormFilled}
+      >
+        <Text style={styles.buttonText}>Save Profile</Text>
+      </Pressable>
+    </View>
+  ) : (
+    <Pressable
+      style={[styles.button, !isFormFilled && styles.buttonDisabled]}
+      onPress={handleSubmit}
+      disabled={!isFormFilled}
+    >
+      <Text style={styles.buttonText}>Save Profile</Text>
+    </Pressable>
+  )}
+```
+
+**New styles for the button row:**
+
+```tsx
+  buttonRow: { flexDirection: "row", gap: 12, marginTop: 28 },
+  cancelButton: {
+    flex: 1, borderRadius: theme.radius.input, padding: 16, alignItems: "center",
+    borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.card,
+  },
+  cancelButtonText: { color: theme.colors.text, fontSize: 16, fontWeight: "700" },
+  saveButton: {
+    flex: 1, backgroundColor: theme.colors.primary, borderRadius: theme.radius.input,
+    padding: 16, alignItems: "center",
+  },
+```
+
+#### 4h. Add loading spinner
+
+```tsx
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
+```
+
+Add a `loadingContainer` style for centering the spinner:
+
+```tsx
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: theme.colors.bg,
+  },
+```
+
+#### The complete screen flow
+
+```
+First visit (no saved data):
+  Loading → Edit Mode (form) → Save → View Mode
+
+Return visit (data exists):
+  Loading → View Mode (card) → Edit → Edit Mode (pre-filled form) → Save → View Mode
+                                                                   → Cancel → View Mode
+```
+
+---
+
+## Common Mistakes <a name="common-mistakes"></a>
+
+### 1. Forgetting the empty dependency array `[]`
+
+```tsx
+// ❌ WRONG — runs on EVERY render (infinite loop!)
+useEffect(() => {
+  async function load() { ... }
+  load();
+});
+
+// ✅ CORRECT — runs ONCE on mount
+useEffect(() => {
+  async function load() { ... }
+  load();
+}, []);  // ← Don't forget this!
+```
+
+Without `[]`, the effect runs after every render. If the effect updates state (which triggers a render), you get an infinite loop. Your app will freeze or crash.
+
+### 2. Making useEffect itself async
+
+```tsx
+// ❌ WRONG — useEffect cannot be async
+useEffect(async () => {
+  const data = await storage.get("profile");
+}, []);
+
+// ✅ CORRECT — define async function inside
+useEffect(() => {
+  async function loadProfile() {
+    const data = await storage.get("profile");
+  }
+  loadProfile();
+}, []);
+```
+
+React expects `useEffect` to return either nothing or a cleanup function. An async function returns a Promise, which React can't use for cleanup.
+
+### 3. Not checking for null before using loaded data
+
+```tsx
+// ❌ WRONG — crashes if nothing was saved yet
+const saved = await storage.get<ProfileData>(STORAGE_KEYS.PROFILE);
+setFirstName(saved.firstName);  // TypeError: Cannot read property of null
+
+// ✅ CORRECT — check first
+const saved = await storage.get<ProfileData>(STORAGE_KEYS.PROFILE);
+if (saved !== null) {
+  setFirstName(saved.firstName);
+}
+```
+
+The first time a user opens the app, nothing is in storage. `get()` returns `null`. Trying to access `.firstName` on `null` crashes the app.
+
+### 4. Forgetting to stringify/parse (if not using the utility)
+
+```tsx
+// ❌ WRONG — stores "[object Object]" instead of JSON
+await AsyncStorage.setItem("profile", profileData);
+
+// ✅ CORRECT — but verbose
+await AsyncStorage.setItem("profile", JSON.stringify(profileData));
+
+// ✅ BEST — use the utility
+await storage.set(STORAGE_KEYS.PROFILE, profileData);
+```
+
+Our utility handles this automatically, but if you ever use AsyncStorage directly, remember: it only stores strings.
+
+### 5. Not adding a loading state
+
+```tsx
+// ❌ Problem: toggle briefly shows "true" then flips to saved value
+const [notifications, setNotifications] = useState(true);
+
+useEffect(() => {
+  async function load() {
+    const saved = await storage.get<boolean>(STORAGE_KEYS.NOTIFICATIONS);
+    if (saved !== null) setNotifications(saved);
+  }
+  load();
+}, []);
+
+// The Switch renders immediately with value={true},
+// then a moment later flips to the saved value (e.g., false).
+// The user sees a flash.
+```
+
+The fix: add `isLoading` state, start it as `true`, set it to `false` after loading. Show a spinner while loading.
+
+### 6. Using the wrong key name
+
+```tsx
+// ❌ WRONG — typo in key name, will never find saved data
+const saved = await storage.get("profle");
+
+// ✅ CORRECT — use the constant
+const saved = await storage.get(STORAGE_KEYS.PROFILE);
+```
+
+This is exactly why `STORAGE_KEYS` exists. Constants don't have typos — if you misspell the constant name, TypeScript catches it at compile time.
+
+---
+
+## Student Challenge <a name="student-challenge"></a>
+
+### Add a Theme Preference
+
+Add a "Dark Mode" toggle to the Settings screen that persists across app restarts, just like the notifications toggle.
+
+**Requirements:**
+
+1. Add a new toggle below Notifications on the Settings screen, using `AppCard` with a `Switch`, titled "Dark Mode" with subtitle "Use dark theme"
+2. Add a new key to `STORAGE_KEYS` in `lib/storage.ts`: `THEME: "theme"`
+3. Save the toggle value to storage when it changes (same pattern as notifications)
+4. Load the saved value on mount (same `useEffect` pattern)
+5. The toggle should persist — if you toggle it on, close the app, and reopen it, it should still be on
+
+**Hints:**
+1. You already have the pattern — look at how `notifications` + `handleToggle` work. Create `darkMode` + `handleDarkModeToggle` following the same pattern.
+2. You can load both values in the same `useEffect` — just add another `storage.get` call inside `loadNotifications` (and maybe rename it to `loadSettings`).
+3. Don't worry about actually changing the app's colors yet — just make the toggle save and load correctly. We'll connect it to theming in a later week.
+
+**Bonus:** Display a small text indicator below the Dark Mode card that shows the current storage state — something like `"Stored: true"` or `"Stored: false"`. Use another `useEffect` or read it directly from state. This helps you verify that storage is working without having to restart the app.
+
+---
+
+*This guide builds on the form concepts from Week 8. The form validation logic is unchanged — we're only adding persistence on top of it. Review `WEEK8_FORMS.md` if you need a refresher on controlled inputs or validation.*

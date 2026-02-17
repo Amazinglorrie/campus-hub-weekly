@@ -21,7 +21,7 @@ WEEK    MODULE                          HRS    STATUS
 ────    ──────                          ───    ──────
  7      Routing (Foundation)            4      [x]
  8      Forms + Validation              4      [x]
- 9      Local Storage                   4      [ ]
+ 9      Local Storage                   4      [x]
 10      API Calls + Loading States      4      [ ]
 11      Camera + Maps                   4      [ ]
 12      Supabase Auth                   4      [ ]
@@ -331,7 +331,7 @@ docs/
 |------|------|--------|
 | 7 | `docs/student/ROUTING_GUIDE.md` | ✅ Complete |
 | 8 | `docs/student/WEEK8_FORMS.md` | ✅ Complete |
-| 9 | `docs/student/WEEK9_LOCAL_STORAGE.md` | [ ] |
+| 9 | `docs/student/WEEK9_LOCAL_STORAGE.md` | ✅ Complete |
 | 10 | `docs/student/WEEK10_API_CALLS.md` | [ ] |
 | 11 | `docs/student/WEEK11_CAMERA_MAPS.md` | [ ] |
 | 12 | `docs/student/WEEK12_SUPABASE_AUTH.md` | [ ] |
@@ -352,7 +352,7 @@ Each guide follows this structure:
 |------|------|--------|
 | 7 | `docs/instructor/WEEK7_INSTRUCTOR.md` | [ ] |
 | 8 | `docs/instructor/WEEK8_INSTRUCTOR.md` | ✅ Complete |
-| 9 | `docs/instructor/WEEK9_INSTRUCTOR.md` | [ ] |
+| 9 | `docs/instructor/WEEK9_INSTRUCTOR.md` | ✅ Complete |
 | 10 | `docs/instructor/WEEK10_INSTRUCTOR.md` | [ ] |
 | 11 | `docs/instructor/WEEK11_INSTRUCTOR.md` | [ ] |
 | 12 | `docs/instructor/WEEK12_INSTRUCTOR.md` | [ ] |
@@ -365,7 +365,7 @@ Each guide follows this structure:
 |------|------|--------|
 | 7 | `docs/labs/LAB7_ROUTING.md` | ✅ Complete |
 | 8 | `docs/labs/LAB8_FORMS.md` | ✅ Complete |
-| 9 | `docs/labs/LAB9_LOCAL_STORAGE.md` | [ ] |
+| 9 | `docs/labs/LAB9_LOCAL_STORAGE.md` | ✅ Complete |
 | 10 | `docs/labs/LAB10_API_CALLS.md` | [ ] |
 | 11 | `docs/labs/LAB11_CAMERA_MAPS.md` | [ ] |
 | 12 | `docs/labs/LAB12_SUPABASE_AUTH.md` | [ ] |

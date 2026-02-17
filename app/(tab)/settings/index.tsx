@@ -1,9 +1,10 @@
-// Week 7: Routing — Settings screen (single file, no nested navigation yet)
+// Week 8: Forms + Validation — NEW file (settings list with navigation to profile)
 import React, { useState } from "react";
-import { StyleSheet, Switch, Text, View } from "react-native";
+import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import AppCard from "../../components/AppCard";
-import { theme } from "../../styles/theme";
+import AppCard from "../../../components/AppCard";
+import { theme } from "../../../styles/theme";
 
 export default function Settings() {
   const [notifications, setNotifications] = useState(true);
@@ -20,17 +21,19 @@ export default function Settings() {
         }
       />
 
-      <AppCard
-        title="Account"
-        subtitle="Update profile settings"
-        right={
-          <Ionicons
-            name="person-circle-outline"
-            size={24}
-            color={theme.colors.primary}
-          />
-        }
-      />
+      <Pressable onPress={() => router.push("/(tab)/settings/profile")}>
+        <AppCard
+          title="Account"
+          subtitle="Update profile settings"
+          right={
+            <Ionicons
+              name="chevron-forward"
+              size={20}
+              color={theme.colors.muted}
+            />
+          }
+        />
+      </Pressable>
     </View>
   );
 }

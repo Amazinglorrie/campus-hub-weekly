@@ -1,73 +1,53 @@
-// Week 8: Forms + Validation — NEW file (profile form with validation, no persistence)
-import React, { useState } from "react";
-import {
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+// Week 8: Forms + Validation — React Hook Form + Zod
+import { zodResolver } from "@hookform/resolvers/zod";
 import { router } from "expo-router";
+import { Controller, useForm } from "react-hook-form";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput } from "react-native";
+import { z } from "zod";
 import { theme } from "../../../styles/theme";
 
-type FormErrors = {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  studentId?: string;
-  phone?: string;
-};
+// ─── Zod Schema ────────────────────────────────────────────────────────────────
+// Defines the shape and validation rules for the profile form fields
+const profileSchema = z.object({
+  firstName: z.string().trim().min(2, "First name must be at least 2 characters."),
+  lastName:  z.string().trim().min(2, "Last name must be at least 2 characters."),
+  email:     z.string().trim().email("Please enter a valid email address."),
+  studentId: z.string().trim().length(9, "Student ID must be exactly 9 characters."),
+  phone:     z.string().refine(
+    (val) => val.replace(/\D/g, "").length >= 10,
+    "Phone number must have at least 10 digits."
+  ),
+});
 
+// Infers the TypeScript type automatically from the schema — no need to write it by hand
+type ProfileForm = z.infer<typeof profileSchema>;
+
+// ─── Component ─────────────────────────────────────────────────────────────────
 export default function Profile() {
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [email, setEmail] = useState("");
-  const [studentId, setStudentId] = useState("");
-  const [phone, setPhone] = useState("");
+  // useForm is the core hook — call it once per form.
+  // - control:      passed to every <Controller> so RHF can track each field's value
+  // - handleSubmit: wraps your onSubmit; runs Zod validation first and only calls onSubmit if all rules pass
+  // - errors:       object of failed fields after a submit attempt, keyed by field name (e.g. errors.email.message)
+  // - resolver:     plugs the Zod schema in — replaces any manual validate() function
+  // - defaultValues: the starting value for every field; required so RHF knows the initial state
+  // - mode:         "onSubmit" means validation only runs when the user presses the submit button
+  const {
+    control,
+    handleSubmit,
+    formState: { errors, isValid },
+  } = useForm<ProfileForm>({
+    resolver: zodResolver(profileSchema),
+    defaultValues: {
+      firstName: "",
+      lastName:  "",
+      email:     "",
+      studentId: "",
+      phone:     "",
+    },
+    mode: "onSubmit",
+  });
 
-  const [errors, setErrors] = useState<FormErrors>({});
-
-  const isFormFilled =
-    firstName.length > 0 &&
-    lastName.length > 0 &&
-    email.length > 0 &&
-    studentId.length > 0 &&
-    phone.length > 0;
-
-  function validate() {
-    const newErrors: FormErrors = {};
-
-    if (firstName.trim().length < 2) {
-      newErrors.firstName = "First name must be at least 2 characters.";
-    }
-
-    if (lastName.trim().length < 2) {
-      newErrors.lastName = "Last name must be at least 2 characters.";
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
-      newErrors.email = "Please enter a valid email address.";
-    }
-
-    if (studentId.trim().length !== 9) {
-      newErrors.studentId = "Student ID must be exactly 9 characters.";
-    }
-
-    const digitsOnly = phone.replace(/\D/g, "");
-    if (digitsOnly.length < 10) {
-      newErrors.phone = "Phone number must have at least 10 digits.";
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  }
-
-  function handleSubmit() {
-    if (!validate()) return;
-
+  function onSubmit(data: ProfileForm) {
     Alert.alert("Profile Saved", "Your profile has been updated.", [
       { text: "OK", onPress: () => router.back() },
     ]);
@@ -79,74 +59,98 @@ export default function Profile() {
 
       {/* First Name */}
       <Text style={styles.label}>First Name</Text>
-      <TextInput
-        style={[styles.input, errors.firstName && styles.inputError]}
-        placeholder="e.g. Jane"
-        placeholderTextColor={theme.colors.muted}
-        value={firstName}
-        onChangeText={setFirstName}
-        autoCapitalize="words"
+      <Controller
+        control={control}
+        name="firstName"
+        render={({ field: { onChange, value } }) => (
+          <TextInput
+            style={[styles.input, errors.firstName && styles.inputError]}
+            placeholder="e.g. Jane"
+            placeholderTextColor={theme.colors.muted}
+            value={value}
+            onChangeText={onChange}
+            autoCapitalize="words"
+          />
+        )}
       />
-      {errors.firstName && <Text style={styles.error}>{errors.firstName}</Text>}
+      {errors.firstName && <Text style={styles.error}>{errors.firstName.message}</Text>}
 
       {/* Last Name */}
       <Text style={styles.label}>Last Name</Text>
-      <TextInput
-        style={[styles.input, errors.lastName && styles.inputError]}
-        placeholder="e.g. Smith"
-        placeholderTextColor={theme.colors.muted}
-        value={lastName}
-        onChangeText={setLastName}
-        autoCapitalize="words"
+      <Controller
+        control={control}
+        name="lastName"
+        render={({ field: { onChange, value } }) => (
+          <TextInput
+            style={[styles.input, errors.lastName && styles.inputError]}
+            placeholder="e.g. Smith"
+            placeholderTextColor={theme.colors.muted}
+            value={value}
+            onChangeText={onChange}
+            autoCapitalize="words"
+          />
+        )}
       />
-      {errors.lastName && <Text style={styles.error}>{errors.lastName}</Text>}
+      {errors.lastName && <Text style={styles.error}>{errors.lastName.message}</Text>}
 
       {/* Email */}
       <Text style={styles.label}>Email</Text>
-      <TextInput
-        style={[styles.input, errors.email && styles.inputError]}
-        placeholder="e.g. jane.smith@edu.ca"
-        placeholderTextColor={theme.colors.muted}
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
+      <Controller
+        control={control}
+        name="email"
+        render={({ field: { onChange, value } }) => (
+          <TextInput
+            style={[styles.input, errors.email && styles.inputError]}
+            placeholder="e.g. jane.smith@edu.ca"
+            placeholderTextColor={theme.colors.muted}
+            value={value}
+            onChangeText={onChange}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+        )}
       />
-      {errors.email && <Text style={styles.error}>{errors.email}</Text>}
+      {errors.email && <Text style={styles.error}>{errors.email.message}</Text>}
 
       {/* Student ID */}
       <Text style={styles.label}>Student ID</Text>
-      <TextInput
-        style={[styles.input, errors.studentId && styles.inputError]}
-        placeholder="e.g. A00123456"
-        placeholderTextColor={theme.colors.muted}
-        value={studentId}
-        onChangeText={setStudentId}
-        autoCapitalize="characters"
-        maxLength={9}
+      <Controller
+        control={control}
+        name="studentId"
+        render={({ field: { onChange, value } }) => (
+          <TextInput
+            style={[styles.input, errors.studentId && styles.inputError]}
+            placeholder="e.g. A00123456"
+            placeholderTextColor={theme.colors.muted}
+            value={value}
+            onChangeText={onChange}
+            autoCapitalize="characters"
+            maxLength={9}
+          />
+        )}
       />
-      {errors.studentId && (
-        <Text style={styles.error}>{errors.studentId}</Text>
-      )}
+      {errors.studentId && <Text style={styles.error}>{errors.studentId.message}</Text>}
 
       {/* Phone Number */}
       <Text style={styles.label}>Phone Number</Text>
-      <TextInput
-        style={[styles.input, errors.phone && styles.inputError]}
-        placeholder="e.g. (403) 555-0123"
-        placeholderTextColor={theme.colors.muted}
-        value={phone}
-        onChangeText={setPhone}
-        keyboardType="phone-pad"
+      <Controller
+        control={control}
+        name="phone"
+        render={({ field: { onChange, value } }) => (
+          <TextInput
+            style={[styles.input, errors.phone && styles.inputError]}
+            placeholder="e.g. (403) 555-0123"
+            placeholderTextColor={theme.colors.muted}
+            value={value}
+            onChangeText={onChange}
+            keyboardType="phone-pad"
+          />
+        )}
       />
-      {errors.phone && <Text style={styles.error}>{errors.phone}</Text>}
+      {errors.phone && <Text style={styles.error}>{errors.phone.message}</Text>}
 
       {/* Submit Button */}
-      <Pressable
-        style={[styles.button, !isFormFilled && styles.buttonDisabled]}
-        onPress={handleSubmit}
-        disabled={!isFormFilled}
-      >
+      <Pressable style={styles.button} onPress={handleSubmit(onSubmit)}>
         <Text style={styles.buttonText}>Save Profile</Text>
       </Pressable>
     </ScrollView>
@@ -197,9 +201,6 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: "center",
     marginTop: 28,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
   },
   buttonText: {
     color: "#ffffff",

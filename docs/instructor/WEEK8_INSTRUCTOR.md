@@ -9,13 +9,41 @@
 ```
 SESSION     DURATION    FOCUS
 ────────    ────────    ─────
-Day 1       2 hours     State, controlled inputs, building the form UI
+Day 1       2 hours     Install libraries, Zod schema, Controller basics, form UI
             (separate day)
-Day 2       2 hours     Validation logic, error display, submit handling
+Day 2       2 hours     Error display, submit handling, mode options, student challenge
 ```
 
-Students leave Day 1 with a form that looks right but doesn't validate.
-Students leave Day 2 with a fully working, validated form.
+Students leave Day 1 with a form that captures input using React Hook Form but doesn't display errors yet.
+Students leave Day 2 with a fully working, schema-validated form.
+
+---
+
+## Tech Stack for This Week
+
+| Library | Role | Docs |
+|---------|------|------|
+| `react-hook-form` | Manages form state, tracks dirty/touched, calls validation on submit | [react-hook-form.com](https://react-hook-form.com/) |
+| `zod` | Defines validation rules as a schema (the "what is valid") | [zod.dev](https://zod.dev/) |
+| `@hookform/resolvers` | Bridges RHF and Zod so they work together with one line | [github.com/react-hook-form/resolvers](https://github.com/react-hook-form/resolvers) |
+
+**Why this stack?**
+- No manual `validate()` function — rules live in the schema, not scattered across the component
+- TypeScript types are inferred automatically from the Zod schema (`z.infer<typeof schema>`)
+- Industry standard — students will encounter this pattern in real jobs
+- Less boilerplate than Formik, better TS support than Yup
+
+### Library Background — What to Tell Students
+
+**React Hook Form** is one of the most downloaded React libraries in the world (~12 million weekly downloads). It solves the problem of coordinating form state — instead of a `useState` per field plus manual tracking of what's dirty, what's been touched, and when to show errors, you call `useForm` once and it handles all of that internally. The key insight for students: RHF manages state *outside* the React render cycle using a ref-based approach, which is why it's extremely performant even on large forms.
+
+> Key reference pages to bookmark: [useForm API](https://react-hook-form.com/docs/useform) | [Controller](https://react-hook-form.com/docs/usecontroller/controller) | [formState](https://react-hook-form.com/docs/useform/formstate)
+
+**Zod** is the current TypeScript-first standard for data validation. Unlike Yup (which was the previous standard and added TypeScript support later), Zod was designed for TypeScript from the ground up — so type inference is exact and automatic. Students should understand that Zod is used far beyond forms: validating API responses, environment variables, config files, and anywhere data crosses a boundary. The mental model is: *describe the shape of valid data once, check anything against it anywhere*.
+
+> Key reference pages to bookmark: [Zod basics](https://zod.dev/?id=basic-usage) | [String validators](https://zod.dev/?id=strings) | [.refine() for custom rules](https://zod.dev/?id=refine)
+
+**@hookform/resolvers** is a thin adapter package. RHF's `resolver` option accepts any function that takes form values and returns `{ values, errors }`. The resolvers package implements this contract for Zod (and other libraries). Students don't need to understand the internals — just that `zodResolver(schema)` is the one line that connects the two libraries.
 
 ---
 
@@ -35,14 +63,15 @@ The app has 3 tabs. Settings is a single file (`settings.tsx`) with a notificati
 
 ### Prep checklist
 
-- [ ] Have the current app running on your machine so you can demo live
-- [ ] Open `app/(tab)/courses/_layout.tsx` in a tab — you'll reference it when creating `settings/_layout.tsx`
-- [ ] Open `app/(tab)/courses/index.tsx` in a tab — you'll reference the `Pressable` + `router.push` pattern
+- [ ] Run `npm install react-hook-form zod @hookform/resolvers` in the project before class
+- [ ] Have the app running and ready to demo live
+- [ ] Open `app/(tab)/courses/_layout.tsx` — you'll reference it when creating `settings/_layout.tsx`
+- [ ] Open `app/(tab)/courses/index.tsx` — you'll reference the `Pressable` + `router.push` pattern
 - [ ] Have the finished `profile.tsx` ready but **don't show it yet** — build it live
 
 ---
 
-## Day 1 (2 hours) — State + Controlled Inputs + Form UI
+## Day 1 (2 hours) — Schema, Controller, Form UI
 
 ### Opening (10 min) — Connect to What They Know
 
@@ -88,86 +117,152 @@ Live code the changes:
 
 Run the app. Tapping Account should crash or show a blank screen (profile.tsx doesn't exist yet). That's fine — it proves the navigation works.
 
-### Step 3 (20 min) — Introduce controlled inputs
+### Step 3 (20 min) — Introduce the Library Stack
 
-This is the concept they need to understand before writing the form.
+**Don't start with code.** Set the context first.
 
-**Don't jump into code yet.** Explain the idea first:
+> "Every form you've ever filled in online — login, signup, checkout — has two things: a way to capture what the user typed, and a way to check if it's valid. We could write both of those by hand, and we did in older React code. But today, we use two libraries that split these jobs cleanly."
 
-> "In a normal input field, the field manages its own text. You type, it shows what you typed. Your code has to go ask the input 'hey, what do you have right now?' whenever it needs the value."
->
-> "A controlled input is the opposite. React state is the boss. The input is not allowed to show anything on its own — it can only display what React tells it to."
-
-Draw or show this cycle on the board/screen:
+Draw or show this division:
 
 ```
-User types → onChangeText fires → setState → re-render → input shows value from state
-     ↑                                                              │
-     └──────────────────── cycle repeats ◀──────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│  react-hook-form                                         │
+│  ─────────────────────────────────────────────────────  │
+│  "Track what the user typed. Know which fields are       │
+│   dirty. Know when to show errors. Call the validator." │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│  zod                                                     │
+│  ─────────────────────────────────────────────────────  │
+│  "Define the rules. What shape is valid data?            │
+│   firstName must be at least 2 chars. email must be     │
+│   a real email. etc."                                    │
+└─────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────┐
+│  @hookform/resolvers/zod                                 │
+│  ─────────────────────────────────────────────────────  │
+│  "The adapter. Plugs Zod into React Hook Form so they   │
+│   speak the same language. One import, one line."        │
+└─────────────────────────────────────────────────────────┘
 ```
 
-Then explain the three pieces:
+### Step 4 (20 min) — Write the Zod Schema
 
-| Piece | What it does | What breaks without it |
-|-------|-------------|----------------------|
-| `useState("")` | Stores the value | No memory between renders |
-| `value={firstName}` | Tells input what to show | Input manages itself, React can't control it |
-| `onChangeText={setFirstName}` | Updates state on keypress | Input appears frozen |
-
-**Demo:** Create a minimal `profile.tsx` with just ONE input field (First Name) to prove the concept works. Show that typing updates state. Add a `<Text>` below that shows `firstName` live so students can see state changing in real time.
+Start `profile.tsx` with just the schema. No JSX yet.
 
 ```tsx
-<TextInput value={firstName} onChangeText={setFirstName} />
-<Text>You typed: {firstName}</Text>
+import { z } from "zod";
+
+const profileSchema = z.object({
+  firstName: z.string().trim().min(2, "First name must be at least 2 characters."),
+  lastName:  z.string().trim().min(2, "Last name must be at least 2 characters."),
+  email:     z.string().trim().email("Please enter a valid email address."),
+  studentId: z.string().trim().length(9, "Student ID must be exactly 9 characters."),
+  phone:     z.string().refine(
+    (val) => val.replace(/\D/g, "").length >= 10,
+    "Phone number must have at least 10 digits."
+  ),
+});
+
+type ProfileForm = z.infer<typeof profileSchema>;
 ```
 
-**Remove the debug `<Text>` after the demo** — it was just to prove the point.
+**Go through each rule line by line and explain:**
+- `.trim()` — strips leading/trailing spaces before checking. Type `"  "` — it's technically 2 chars but empty after trim.
+- `.min(2, "message")` — Zod includes the error message right in the rule. No separate `errors` object to manage.
+- `.email()` — Zod has a built-in email check. No regex to write or explain.
+- `.length(9)` — must be exactly 9. Not min, not max — exactly.
+- `.refine()` — for custom rules Zod doesn't cover built-in. The function returns `true` (valid) or `false` (invalid). **Explain the phone logic:** strip non-digits with `replace(/\D/g, "")`, then check if ≥ 10 digits remain. This lets users type `(403) 555-0123` in any format.
 
-### Step 4 (25 min) — Build the form UI
+**The type inference moment** — point at `z.infer<typeof profileSchema>`:
+> "This is why the industry moved to Zod. We write the schema once, and TypeScript automatically knows what shape the form data has. We didn't write a separate `type ProfileForm` by hand — Zod generated it for us."
 
-Now add all five fields. Live code this — have students follow along.
+### Step 5 (25 min) — `useForm` + `Controller`
 
-Go through each field one at a time:
-1. **First Name** — `autoCapitalize="words"` (ask: "why words and not sentences?")
-2. **Last Name** — `autoCapitalize="words"` (same reasoning as First Name — proper name capitalization)
-3. **Email** — `keyboardType="email-address"`, `autoCapitalize="none"` (show how the keyboard changes on a phone/simulator)
-4. **Student ID** — `autoCapitalize="characters"`, `maxLength={9}` (explain maxLength as a first line of defense, not validation)
-5. **Phone Number** — `keyboardType="phone-pad"` (show how the keyboard switches to the numeric dialer layout)
-
-For each field, follow the same structure:
-```
-Label → TextInput → (error message placeholder — leave empty for now)
-```
-
-Style as you go. Use `theme.ts` values — don't hardcode colors or spacing. Add `error` and `input` to the theme first if you haven't already.
-
-### Step 5 (15 min) — The submit button + disabled state
-
-Introduce the `isFormFilled` concept:
+Now add the component:
 
 ```tsx
-const isFormFilled =
-  firstName.length > 0 && lastName.length > 0 && email.length > 0 &&
-  studentId.length > 0 && phone.length > 0;
+const {
+  control,
+  handleSubmit,
+  formState: { errors },
+} = useForm<ProfileForm>({
+  resolver: zodResolver(profileSchema),
+  defaultValues: {
+    firstName: "", lastName: "", email: "", studentId: "", phone: "",
+  },
+  mode: "onSubmit",
+});
 ```
 
-**Ask the class:** "Is this validation?" (No — it just checks something was typed, not that it's correct.)
+**Explain each piece:**
 
-Build the button with both visual and functional disabled states. Run the app — show that the button is faded when fields are empty and solid when all fields have text.
+| Piece | What it does |
+|-------|-------------|
+| `control` | The "registration system" — passed to each `Controller` so RHF knows about each field |
+| `handleSubmit` | Wraps your `onSubmit`. Validates first, only calls your function if schema passes |
+| `formState.errors` | Object of errors, keyed by field name. Populated after submit attempt |
+| `resolver: zodResolver(...)` | Plugs Zod in. One line replaces our entire manual `validate()` function |
+| `defaultValues` | Initial field values. Required for controlled inputs |
+| `mode: "onSubmit"` | Only validate when user presses submit (not on every keystroke) |
+
+Now show the first `Controller` for First Name:
+
+```tsx
+<Controller
+  control={control}
+  name="firstName"
+  render={({ field: { onChange, value } }) => (
+    <TextInput
+      value={value}
+      onChangeText={onChange}
+      placeholder="e.g. Jane"
+    />
+  )}
+/>
+```
+
+**Why `Controller` instead of `register`?**
+> "React Hook Form has two ways to connect inputs. `register` works great for plain HTML `<input>` elements. But React Native's `TextInput` isn't an HTML element — it uses `onChangeText` instead of `onChange`. `Controller` is the React Native-friendly wrapper. You give it the field name, and it gives you back `value` and `onChange` through the render prop. Just pass them to your `TextInput`."
+
+Build the remaining four fields following the exact same pattern. Let students watch for First Name, then have them try Last Name on their own. Compare their code — it should be nearly identical with just the names changed.
+
+### Step 6 (10 min) — The submit button
+
+```tsx
+function onSubmit(data: ProfileForm) {
+  Alert.alert("Profile Saved", "Your profile has been updated.", [
+    { text: "OK", onPress: () => router.back() },
+  ]);
+}
+
+<Pressable style={styles.button} onPress={handleSubmit(onSubmit)}>
+  <Text style={styles.buttonText}>Save Profile</Text>
+</Pressable>
+```
+
+**Key point:** `handleSubmit(onSubmit)` — not `onSubmit` directly. `handleSubmit` is RHF's wrapper:
+1. It runs validation against the Zod schema
+2. If invalid, it populates `errors` and re-renders. Your `onSubmit` never runs.
+3. If valid, it calls your `onSubmit` with the fully typed form data.
+
+Run the app. Fill every field. Press Save. Alert appears. **Leave error display for Day 2.**
 
 ### Day 1 Closing (10 min)
 
 Run the full app. Walk through what works:
-- Settings tab loads
-- Tapping Account pushes to the Edit Profile screen (with back button)
-- Five input fields accept text (First Name, Last Name, Email, Student ID, Phone Number)
-- Button enables when all fields have text
-- Pressing Save does... nothing useful yet
+- Settings tab loads, Account card is tappable
+- Edit Profile screen has five inputs that capture text
+- Press Save with valid data → success alert
+- Press Save with empty fields → nothing visible happens yet (errors aren't displayed)
 
 **Set up Day 2:**
-> "Right now you can type 'x' in every field and press Save. The app is happy. That's a problem. Next class we add validation — the app will check if the data is actually correct before accepting it."
+> "The form validates — but the user can't see why it failed. `formState.errors` has all the information, but we haven't wired it to the UI yet. That's Day 2."
 
-**Homework (optional):** Read the "Controlled Inputs" section of `WEEK8_FORMS.md`. Come to Day 2 ready to explain the cycle in your own words.
+**Homework (optional):** Read the "React Hook Form + Zod" section of `WEEK8_FORMS.md`. Come ready to explain what `Controller` does and why we need it.
 
 ---
 
@@ -175,8 +270,7 @@ Run the full app. Walk through what works:
 
 ### Prep checklist
 
-- [ ] Make sure the Day 1 code is working on your machine
-- [ ] Have a version with intentional bugs ready for the common mistakes demo (Step 10)
+- [ ] Make sure Day 1 code is working on your machine
 - [ ] Prepare the student challenge requirements on a slide or handout
 
 ### What students should have from Day 1
@@ -185,181 +279,160 @@ Run the full app. Walk through what works:
 app/(tab)/settings/
 ├── _layout.tsx       ← Stack navigator
 ├── index.tsx         ← Settings list (Account card tappable)
-└── profile.tsx       ← Form with 5 inputs + submit button (NO validation yet)
+└── profile.tsx       ← Form with 5 Controller fields + submit (NO error display yet)
 
 styles/theme.ts       ← Updated with error color + input radius
 ```
 
-If any students are missing Day 1 code, give them 5 minutes at the start to catch up using the guide.
-
 ---
 
-## Day 2 (2 hours) — Validation + Error Display + Submit
+## Day 2 (2 hours) — Error Display + Polish + Student Challenge
 
 ### Opening (10 min) — Recap Day 1
 
-Don't assume they remember everything. Quick interactive recap:
-
 **Ask these out loud — let students answer:**
-1. "What did we do to the Settings tab structure?" (Converted from a single file to a folder with a Stack)
-2. "Why did we delete `settings.tsx`?" (Duplicate route conflict with `settings/index.tsx`)
-3. "What makes our TextInputs 'controlled'?" (The `value` prop is tied to state)
+1. "What are the three libraries and what does each do?" (RHF = state/flow, Zod = rules, resolvers = glue)
+2. "Why do we use `Controller` in React Native instead of `register`?" (TextInput isn't an HTML input, uses `onChangeText`)
+3. "What does `handleSubmit` do before calling our `onSubmit`?" (Runs Zod validation first)
 
 **Then demonstrate the problem we're solving today:**
 
-Run the app. Type "x" in every field. Press Save. Nothing happens — or worse, it "succeeds" with garbage data.
+Run the app. Type "x" in every field. Press Save. Nothing visible happens — no errors, no feedback. The validation ran and failed, but the user has no idea.
 
-> "The form accepts anything right now. Today we fix that. By the end of class, the app will reject bad input and show clear error messages."
+> "All the validation information exists in `formState.errors`. We just haven't connected it to the screen yet. Today we fix that."
 
-### Step 6 (30 min) — The `validate()` function
+### Step 7 (25 min) — Wiring Up Error Display
 
-This is the core of Day 2. Build it rule by rule.
+**Show `formState.errors` in the console first** (or mention it conceptually):
 
-**Start with the name fields.** Mention the error type first:
+> "After a failed submit, `errors` is an object like this:
+> ```
+> {
+>   firstName: { message: "First name must be at least 2 characters." },
+>   email: { message: "Please enter a valid email address." }
+> }
+> ```
+> Valid fields don't appear. Only failed fields get an entry."
 
-```tsx
-type FormErrors = {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  studentId?: string;
-  phone?: string;
-};
-```
-
-> "We give this type a name — `FormErrors` — instead of writing it inline. It keeps the code cleaner, especially now that we have five fields."
-
-Then build the function, starting with `firstName` and `lastName`:
+Do the first field together — First Name:
 
 ```tsx
-function validate() {
-  const newErrors: FormErrors = {};
+{/* Red border when there's an error */}
+<Controller
+  control={control}
+  name="firstName"
+  render={({ field: { onChange, value } }) => (
+    <TextInput
+      style={[styles.input, errors.firstName && styles.inputError]}
+      value={value}
+      onChangeText={onChange}
+    />
+  )}
+/>
 
-  if (firstName.trim().length < 2) {
-    newErrors.firstName = "First name must be at least 2 characters.";
-  }
-
-  if (lastName.trim().length < 2) {
-    newErrors.lastName = "Last name must be at least 2 characters.";
-  }
-
-  setErrors(newErrors);
-  return Object.keys(newErrors).length === 0;
-}
+{/* Error message below the input */}
+{errors.firstName && (
+  <Text style={styles.error}>{errors.firstName.message}</Text>
+)}
 ```
 
-**Pause and explain:**
-- Why `trim()`? — Type 3 spaces in the First Name field. It looks filled but it's empty. `trim()` catches this.
-- Why a fresh `newErrors` object each time? — If you reuse old errors, fixed fields still show errors.
-- Why `Object.keys().length === 0`? — If no keys were added, nothing was wrong → return true.
-- Why validate both `firstName` and `lastName` the same way? — Same rule, different fields. Ask: "Could we write a helper? Sure, but let's keep it explicit for now."
+**Explain each change:**
+- `errors.firstName && styles.inputError` — conditional style in an array. If `errors.firstName` is undefined (no error), nothing extra is applied. If it's an object (error exists), `inputError` overrides just the `borderColor`.
+- `errors.firstName.message` — the exact string we put in the Zod schema. No duplication — write the message once in the schema, display it here.
 
-**Then add email validation:**
+Give students 5 minutes to add error display for the remaining four fields on their own. Walk around and help.
+
+**Common issue to watch for:** Students writing `errors.firstName?.message` with optional chaining. Technically fine, but explain that `errors.firstName` is already `undefined` when there's no error, so the short-circuit `&&` before the `<Text>` already protects us.
+
+### Step 8 (15 min) — Mode Options
+
+Now that error display works, introduce the `mode` option:
 
 ```tsx
-const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+useForm({ mode: "onSubmit" })    // Default — validate only when Submit pressed
+useForm({ mode: "onBlur" })      // Validate when user leaves a field
+useForm({ mode: "onChange" })    // Validate on every keystroke
 ```
 
-Don't spend more than 2–3 minutes on regex. Say:
-> "This checks: something @ something . something. It's not perfect, but it catches obvious mistakes. Production apps use libraries for this — for now, this is enough."
+**Live demo — switch to `"onBlur"`:**
+- Type "J" in First Name, then tap to the next field
+- Error appears immediately after leaving the field
 
-Test with: `"jane"` (fails), `"jane@"` (fails), `"jane@edu.ca"` (passes).
+**Ask the class:** "Is this better or worse than `onSubmit` mode?"
 
-**Then add Student ID validation:**
+Let them discuss. There's no single right answer — it depends on UX preference. `onBlur` is common in production apps. For this course, `onSubmit` keeps things simpler.
 
-```tsx
-if (studentId.trim().length !== 9) {
-  newErrors.studentId = "Student ID must be exactly 9 characters.";
-}
-```
+**Switch back to `"onSubmit"`** before moving on.
 
-Straightforward — just a length check.
-
-**Then add Phone Number validation:**
-
-```tsx
-if (phone.replace(/\D/g, "").length < 10) {
-  newErrors.phone = "Phone number must be at least 10 digits.";
-}
-```
-
-**Explain the regex:** `\D` matches any non-digit character. `replace(/\D/g, "")` strips everything that isn't a digit — dashes, parentheses, spaces. Then we check if the remaining digits are at least 10. This means students can type `(604) 555-1234` and it still passes because the digits alone are `6045551234` (10 digits).
-
-### Step 7 (20 min) — Displaying errors
-
-Now wire up the error messages in JSX. Do the first field together, then let students try the other four on their own for 5 minutes.
-
-```tsx
-{errors.firstName && <Text style={styles.error}>{errors.firstName}</Text>}
-```
-
-**Explain the pattern:** `{condition && <Component />}` — short-circuit rendering. If `errors.firstName` is undefined (no error), nothing renders. If it has a string, the `<Text>` appears.
-
-**Then add the red border:**
-
-```tsx
-style={[styles.input, errors.firstName && styles.inputError]}
-```
-
-**Ask:** "Why is this an array?" — React Native merges the styles. The second style only applies when there's an error, and it overrides just the `borderColor`.
-
-Give students 5 minutes to add error display for lastName, email, studentId, and phone on their own. Walk around and help.
-
-### Step 8 (15 min) — The submit handler
-
-```tsx
-function handleSubmit() {
-  if (!validate()) return;
-  Alert.alert(
-    "Profile Saved",
-    `Name: ${firstName} ${lastName}\nEmail: ${email}\nID: ${studentId}\nPhone: ${phone}`
-  );
-}
-```
-
-Wire it to the button's `onPress`. Test the full flow:
-
-1. Leave all fields empty, try to press Save → button is disabled (can't press)
-2. Type "x" in each field, press Save → errors appear (validation fails)
-3. Fix each field with valid data, press Save → success alert
-
-**This is the satisfying moment.** Let students experience the full cycle.
-
-### Step 9 (15 min) — Common mistakes walkthrough
+### Step 9 (15 min) — Common Mistakes Walkthrough
 
 Don't just list these — **demonstrate them live**:
 
-1. **Put `settings.tsx` back alongside the folder** → show the crash. Delete it again. "This is why we delete the old file."
+1. **Missing `defaultValues`** → Remove `defaultValues`. Type in a field, press save. RHF loses track of the initial value. Add it back.
 
-2. **Remove `trim()` from the firstName check** → type 3 spaces, submit. It passes validation but the name is empty. Add `trim()` back.
+2. **Using `onChange` instead of `onChangeText`** in the `TextInput`:
+   ```tsx
+   // WRONG — this is HTML's onChange
+   <TextInput onChange={onChange} />
 
-3. **Add `validate()` inside `onChangeText`** → type one character in email, watch the error flash immediately. "See why we only validate on submit? Let them finish typing."
+   // CORRECT — React Native uses onChangeText
+   <TextInput onChangeText={onChange} />
+   ```
+   Show the broken behavior (typing does nothing), then fix it.
 
-### Step 10 (20 min) — Student challenge
+3. **Calling `onSubmit` directly instead of `handleSubmit(onSubmit)`:**
+   ```tsx
+   // WRONG — skips validation entirely
+   onPress={onSubmit}
+
+   // CORRECT — runs Zod first
+   onPress={handleSubmit(onSubmit)}
+   ```
+
+4. **Forgetting `resolver`** → Remove `zodResolver`. Press save with empty fields. Submits successfully — Zod schema is ignored. Add it back.
+
+### Step 10 (20 min) — Student Challenge
 
 Present the Program selection challenge. Give them the requirements:
 
 - New field: Program (e.g. "Software Development", "Data Analytics", "Network Systems")
-- Create a list of program options and display them as `Pressable` items the user can tap to select
-- Highlight the selected program visually (different background color, border, etc.)
-- Store the selected program in state
-- Validation: a program must be selected before submitting
+- Add it to the Zod schema: `program: z.string().min(1, "Please select a program.")`
+- Create a list of program options displayed as `Pressable` items the user taps to select
+- Track the selected program with `useState<string>("")` (or `null`) — this field is **not** a `TextInput`, so use `Controller`'s `onChange` to set it manually when a Pressable is tapped
+- Highlight the selected program visually
 - Show the selected program in the success alert
 
-**Don't solve it for them.** This is their chance to apply what they know — state management, Pressable (which they used in Courses), conditional styling, and validation. Walk around and help individually.
+**Hint to give students for non-TextInput fields with Controller:**
+```tsx
+<Controller
+  control={control}
+  name="program"
+  render={({ field: { onChange, value } }) => (
+    <View>
+      {PROGRAMS.map((p) => (
+        <Pressable key={p} onPress={() => onChange(p)}>
+          <Text>{p}</Text>
+        </Pressable>
+      ))}
+    </View>
+  )}
+/>
+```
 
-If students finish early, bonus challenge: add a "Clear Form" button that resets all state to empty strings, deselects the program, and clears errors.
+This pattern — using `Controller` with a non-TextInput component — is exactly what they'll use in the lab for Category and Urgency.
+
+If students finish early, bonus challenge: use `mode: "onBlur"` and see how the experience changes.
 
 ### Day 2 Closing (10 min)
 
 Zoom out and connect to the bigger picture:
 
-> "You now know how to build any form. Login screens, signup screens, search filters, settings — they're all the same pattern: controlled inputs + validation on submit. Next week we'll save this profile data so it persists when you close the app."
+> "You now know the pattern that real production apps use for forms. The schema-first approach — define what valid data looks like, then let the library handle the rest — scales to 50-field enterprise forms just as well as our 5-field profile form. Next week we'll persist this data so it survives when you close the app."
 
 **Quick knowledge check — ask these out loud:**
-1. "What makes an input 'controlled'?" (value prop tied to state)
-2. "When do we validate — every keystroke or on submit?" (on submit)
-3. "What's the difference between `isFormFilled` and `validate()`?" (filled = has text, valid = text is correct)
+1. "Where do validation rules live now?" (In the Zod schema)
+2. "What does `handleSubmit` do?" (Runs validation, only calls onSubmit if valid)
+3. "Why `Controller` instead of `register`?" (React Native's TextInput needs onChangeText, not onChange)
 
 ---
 
@@ -368,24 +441,25 @@ Zoom out and connect to the bigger picture:
 | Student says... | Likely cause | Fix |
 |----------------|-------------|-----|
 | "My Settings tab disappeared" | Both `settings.tsx` and `settings/` exist | Delete `settings.tsx` |
-| "Typing doesn't do anything" | Missing `onChangeText` or the handler isn't calling `setState` | Check the TextInput props |
-| "Errors never go away" | Reusing the old errors object instead of creating a fresh one | Make sure `validate()` starts with `const newErrors = {}` |
-| "Button is always disabled" | `isFormFilled` check has a logic error (using `||` instead of `&&`) | Review the boolean logic |
-| "Imports are broken" | Relative paths didn't get updated after moving to settings/ folder | Need one more `../` — three levels up now |
+| "Typing doesn't do anything" | Using `onChange` instead of `onChangeText` in TextInput | Change to `onChangeText={onChange}` |
+| "Errors never show" | `errors` from `formState` not destructured, or missing `resolver` | Check `useForm` setup |
+| "Submit always succeeds even with bad data" | Missing `resolver: zodResolver(profileSchema)` | Add the resolver |
+| "TypeScript errors on `errors.firstName.message`" | Accessing `.message` without checking if error exists first | Use `errors.firstName?.message` or guard with `&&` |
 | "Back button doesn't appear" | Missing `_layout.tsx` in the settings folder | Create it with the Stack navigator |
+| "Imports are broken" | Relative paths didn't get updated after moving to settings/ folder | Need one more `../` — three levels up now |
 
 ---
 
 ## Pacing Notes
 
 ### Day 1
-- **If running ahead:** Let students experiment with TextInput props — `secureTextEntry`, `multiline`, `autoCorrect={false}`. Builds curiosity for future forms.
-- **If running behind:** Combine Steps 4 and 5. Build the button alongside the last input field instead of as a separate step.
-- **If students are struggling with controlled inputs:** Keep the debug `<Text>You typed: {firstName}</Text>` under each field for the rest of Day 1. Seeing state change in real time makes it click faster than any explanation.
+- **If running ahead:** Show the Zod docs briefly — let students see `.url()`, `.uuid()`, `.min()` with no message arg. Builds curiosity for what schemas can do.
+- **If running behind:** Skip building all five fields live — do First Name and Last Name together, have students complete Email, Student ID, and Phone as a brief pair activity.
+- **If students are confused by `Controller`:** Go back to the analogy — "RHF is the manager. `Controller` is how the manager hands a field to RHF to track. You hand it a name and a render function. The render function gets `value` and `onChange` back."
 
 ### Day 2
-- **If running ahead:** Extend the student challenge — have them also add format validation to the Student ID (must start with "A00"). Or let them start on the bonus "Clear Form" button.
-- **If running behind:** Skip the live common mistakes demo (Step 9). Students can read about them in the guide. Prioritize getting the full form working + student challenge time.
+- **If running ahead:** Extend the student challenge — have them add a `z.discriminatedUnion` or a `z.enum(["Software Development", "Data Analytics", "Network Systems"])` for the program field instead of just `z.string()`.
+- **If running behind:** Skip the mode demo (Step 8). Students can experiment on their own. Prioritize Step 7 (error display) and the student challenge.
 - **If Day 1 code is broken for some students:** Spend the first 10 minutes of Day 2 helping them catch up. Pair them with a student who has working code.
 
 ---
@@ -396,9 +470,17 @@ Zoom out and connect to the bigger picture:
 app/(tab)/settings/
 ├── _layout.tsx       ← Stack navigator (2 screens)
 ├── index.tsx         ← Settings list (Account card now tappable)
-└── profile.tsx       ← Edit Profile form (5 validated fields)
+└── profile.tsx       ← Edit Profile form (RHF + Zod, 5 fields)
 
 styles/theme.ts       ← Updated with error color + input radius
 ```
 
 The old `app/(tab)/settings.tsx` should be **deleted**.
+
+### Dependencies added this week
+
+```
+react-hook-form
+zod
+@hookform/resolvers
+```

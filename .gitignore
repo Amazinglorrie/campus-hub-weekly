@@ -44,4 +44,6 @@ app-example
 
 # instructor-only files
 docs/instructor/
+docs/labs/
 course_plan.md
+COURSE_PLAN.md

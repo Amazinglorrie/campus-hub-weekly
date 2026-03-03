@@ -23,7 +23,7 @@ const profileSchema = z.object({
 type ProfileForm = z.infer<typeof profileSchema>;
 
 // ─── Component ─────────────────────────────────────────────────────────────────
-export default function Profile() {
+const Profile = () => {
   // useForm is the core hook — call it once per form.
   // - control:      passed to every <Controller> so RHF can track each field's value
   // - handleSubmit: wraps your onSubmit; runs Zod validation first and only calls onSubmit if all rules pass
@@ -47,7 +47,9 @@ export default function Profile() {
     mode: "onSubmit",
   });
 
-  function onSubmit(data: ProfileForm) {
+  // onSubmit is called only if all fields pass validation. The "data" argument is guaranteed to match the ProfileForm type, so you can use it with confidence.
+  // it will be used later 
+  const onSubmit = (data: ProfileForm) => {
     Alert.alert("Profile Saved", "Your profile has been updated.", [
       { text: "OK", onPress: () => router.back() },
     ]);
@@ -208,3 +210,5 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 });
+
+export default Profile;

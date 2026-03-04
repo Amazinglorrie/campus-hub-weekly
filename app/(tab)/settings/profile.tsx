@@ -9,7 +9,7 @@ import { theme } from "../../../styles/theme";
 // ─── Zod Schema ────────────────────────────────────────────────────────────────
 // Defines the shape and validation rules for the profile form fields
 const profileSchema = z.object({
-  firstName: z.string().trim().min(2, "First name must be at least 2 characters."),
+  firstName: z.string().trim().min(3, "First name must be at least 3 characters."),
   lastName:  z.string().trim().min(2, "Last name must be at least 2 characters."),
   email:     z.string().trim().email("Please enter a valid email address."),
   studentId: z.string().trim().length(9, "Student ID must be exactly 9 characters."),

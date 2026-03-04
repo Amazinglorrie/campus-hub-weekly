@@ -1,6 +1,6 @@
 // Week 7: Routing — Tab layout (3 tabs: Home, Courses, Settings)
-import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
 
 export default function TabLayout() {
   return (

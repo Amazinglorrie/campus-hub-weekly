@@ -1,8 +1,8 @@
 // Week 8: Forms + Validation — NEW file (settings list with navigation to profile)
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React, { useState } from "react";
 import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
-import { router } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
 import AppCard from "../../../components/AppCard";
 import { theme } from "../../../styles/theme";
 

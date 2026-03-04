@@ -31,15 +31,15 @@ const profileSchema = z.object({
 type ProfileForm = z.infer<typeof profileSchema>;
 
 const Profile = () => {
-  const [isLoading, setIsLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
-  const [hasSavedData, setHasSavedData] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // week 9: track loading state while we load saved profile data
+  const [isEditing, setIsEditing] = useState(false); // week 9: track whether we're in edit mode or view mode
+  const [hasSavedData, setHasSavedData] = useState(false); // week 9 track whether we have any saved data, to determine whether to show Cancel button (only show if we have saved data to cancel back to)
 
   const {
     control,
     handleSubmit,
-    reset,
-    watch,
+    reset, // week 9: added reset function to reset form values when cancelling edits
+    watch, // week 9: added watch function to track form values for enabling/disabling Save button
     formState: { errors },
   } = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
@@ -55,6 +55,9 @@ const Profile = () => {
 
   // Track field values to enable/disable the Save button    // week 9
   const watchedValues = watch();
+  // Check if all fields have some value (basic check to prevent saving empty form, since Zod validation only runs on submit)
+  // it will produce an array of all field values, check that every value has length > 0 (i.e. is not an empty string)
+  // e.g ["Jane", "Smith", "", "A00123456", "(403) 555-0123"] => false because email is empty
   const isFormFilled = Object.values(watchedValues).every((v) => v.length > 0);
 
   // Load saved profile data on mount
@@ -74,12 +77,15 @@ const Profile = () => {
 
   // RHF calls this only after Zod validation passes
   const onSubmit = async (data: ProfileForm) => {
+    // Save the validated profile data to local storage
     await storage.set(STORAGE_KEYS.PROFILE, data);
     setHasSavedData(true);
     setIsEditing(false); // switch to view mode — the view IS the confirmation
   };
 
   const handleCancel = async () => {
+    // On cancel, we want to discard any unsaved changes and reset the form back to the last saved values
+    // To do this, we can load the saved profile data from storage again and use the reset function from React Hook Form to reset the form values
     const saved = await storage.get<ProfileForm>(STORAGE_KEYS.PROFILE);
     if (saved !== null) {
       reset(saved); // restore saved values, discarding any in-progress edits
@@ -95,6 +101,7 @@ const Profile = () => {
     );
   }
 
+  // Week 9: View/Edit mode toggle — we use the same form for both viewing and editing, just render it differently based on isEditing state
   // VIEW MODE — show saved profile as a read-only card
   if (!isEditing) {
     const values = watch();
@@ -251,7 +258,8 @@ const Profile = () => {
         <Text style={styles.error}>{errors.phone.message}</Text>
       )}
 
-      {/* Buttons */}
+      {/* Buttons */} 
+      {/* Week 9: if we have saved data, show both Cancel and Save buttons side by side, if we don't have saved data (i.e. first time filling out form), just show the Save button centered */}
       {hasSavedData ? (
         <View style={styles.buttonRow}>
           <Pressable style={styles.cancelButton} onPress={handleCancel}>
@@ -361,6 +369,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 28,
   },
+  // Week 9: disabled button style (used when form is not completely filled out)
   buttonDisabled: {
     opacity: 0.5,
   },
@@ -369,11 +378,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
+  // week 9: styles for the Cancel and Save buttons when we have saved data (i.e. we're showing both buttons side by side)
   buttonRow: {
     flexDirection: "row",
     gap: 12,
     marginTop: 28,
   },
+  // week 9: cancel button is a secondary outlined style, only shows when we have saved data to cancel back to
   cancelButton: {
     flex: 1,
     borderRadius: theme.radius.input,
@@ -383,11 +394,13 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.card,
   },
+  // week 9: cancel button text is a muted color to indicate it's a secondary action
   cancelButtonText: {
     color: theme.colors.text,
     fontSize: 16,
     fontWeight: "700",
   },
+  // week 9: save button takes up remaining space, same primary style as before, but disabled when form is not completely filled out
   saveButton: {
     flex: 1,
     backgroundColor: theme.colors.primary,

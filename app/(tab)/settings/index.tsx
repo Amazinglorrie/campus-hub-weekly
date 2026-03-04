@@ -5,8 +5,8 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import AppCard from "../../../components/AppCard";
 import { theme } from "../../../styles/theme";
-import * as storage from "../../../lib/storage";
-import { STORAGE_KEYS } from "../../../lib/storage";
+import * as storage from "../../../lib/storage";    // week 9: import our storage utility functions and typed keys
+import { STORAGE_KEYS } from "../../../lib/storage"; // week 9: import our typed storage keys to prevent typos
 
 const Settings = () => {
   const [notifications, setNotifications] = useState(true);

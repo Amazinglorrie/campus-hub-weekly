@@ -469,7 +469,32 @@ Three new pieces of state:
 
 Two new RHF values:
 - **`reset(data)`** — replaces all form field values at once. Used to pre-fill the form when loading saved data, and to restore saved values on Cancel.
-- **`watch()`** — returns the current value of every field. Used to read values for the view mode card, and to compute `isFormFilled`.
+- **`watch()`** — returns a live snapshot of every field's current value as an object. Re-runs on every keystroke. Used to read values for the view mode card, and to compute `isFormFilled`.
+
+**How `isFormFilled` works:**
+
+```ts
+const watchedValues = watch();
+// Returns a live object — e.g. after typing only the first name:
+// { firstName: "Jane", lastName: "", email: "", studentId: "", phone: "" }
+
+const isFormFilled = Object.values(watchedValues).every((v) => v.length > 0);
+// Object.values(...) → ["Jane", "", "", "", ""]
+// .every(v => v.length > 0) → false (empty strings fail the test)
+// Once ALL fields have at least one character → true
+```
+
+`isFormFilled` is used to dim and disable the Save button until every field has content:
+
+```tsx
+<Pressable
+  style={[styles.button, !isFormFilled && styles.buttonDisabled]}
+  disabled={!isFormFilled}
+  onPress={handleSubmit(onSubmit)}
+>
+```
+
+**Important distinction:** `isFormFilled` is only a UI gate — it prevents tapping an obviously incomplete form. The actual validation (correct email format, exactly 9 chars for student ID, 10-digit phone) still runs inside `handleSubmit(onSubmit)` via Zod when the button is pressed. A user could fill every field with a single space and `isFormFilled` would be `true` — Zod would then catch it.
 
 #### 4d. Load data and decide the initial mode
 

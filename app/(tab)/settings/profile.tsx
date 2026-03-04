@@ -1,7 +1,7 @@
 // Week 9: Local Storage — MODIFIED (persistence + view/edit mode, built on Week 8 React Hook Form + Zod)
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react"; // useEffect week 9
 import {
-  ActivityIndicator,
+  ActivityIndicator, // week 9
   Pressable,
   ScrollView,
   StyleSheet,
@@ -13,8 +13,8 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, Controller } from "react-hook-form";
 import { theme } from "../../../styles/theme";
-import * as storage from "../../../lib/storage";
-import { STORAGE_KEYS } from "../../../lib/storage";
+import * as storage from "../../../lib/storage";  // week 9
+import { STORAGE_KEYS } from "../../../lib/storage";  // week 9
 
 // Zod schema — unchanged from Week 8
 const profileSchema = z.object({
@@ -53,7 +53,7 @@ const Profile = () => {
     mode: "onSubmit",
   });
 
-  // Track field values to enable/disable the Save button
+  // Track field values to enable/disable the Save button    // week 9
   const watchedValues = watch();
   const isFormFilled = Object.values(watchedValues).every((v) => v.length > 0);
 

@@ -8,18 +8,18 @@ export const STORAGE_KEYS = {
 } as const;
 
 // Get a value from storage (automatically parses JSON)
-export async function get<T>(key: string): Promise<T | null> {
+export const get = async <T>(key: string): Promise<T | null> => {
   const value = await AsyncStorage.getItem(key);
   if (value === null) return null;
   return JSON.parse(value) as T;
-}
+};
 
 // Set a value in storage (automatically stringifies to JSON)
-export async function set(key: string, value: unknown): Promise<void> {
+export const set = async (key: string, value: unknown): Promise<void> => {
   await AsyncStorage.setItem(key, JSON.stringify(value));
-}
+};
 
 // Remove a value from storage
-export async function remove(key: string): Promise<void> {
+export const remove = async (key: string): Promise<void> => {
   await AsyncStorage.removeItem(key);
-}
+};

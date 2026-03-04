@@ -320,19 +320,19 @@ New additions: `useEffect` from React, `ActivityIndicator` from React Native, an
 #### 3b. Add loading state and useEffect
 
 ```tsx
-export default function Settings() {
+const Settings = () => {
   const [notifications, setNotifications] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
 
   // Load saved notification preference on mount
   useEffect(() => {
-    async function loadNotifications() {
+    const loadNotifications = async () => {
       const saved = await storage.get<boolean>(STORAGE_KEYS.NOTIFICATIONS);
       if (saved !== null) {
         setNotifications(saved);
       }
       setIsLoading(false);
-    }
+    };
     loadNotifications();
   }, []);
 ```
@@ -352,10 +352,10 @@ Replace the direct `setNotifications` with a handler that also saves:
 
 ```tsx
   // Save notification preference when toggled
-  async function handleToggle(value: boolean) {
+  const handleToggle = async (value: boolean) => {
     setNotifications(value);
     await storage.set(STORAGE_KEYS.NOTIFICATIONS, value);
-  }
+  };
 ```
 
 And update the Switch:
@@ -387,231 +387,243 @@ This goes right before the main `return`. When `isLoading` is `true`, the compon
 
 **File:** `app/(tab)/settings/profile.tsx`
 
-This is the biggest change this week. We're not just adding persistence — we're also adding a **view/edit mode split**. When a user opens the profile screen and data already exists, they see a clean read-only view. They tap "Edit Profile" to switch to the form. This matches how real apps (Instagram, LinkedIn, your phone's Settings) handle profile screens.
+This is the biggest change this week. We're not just adding persistence — we're also adding a **view/edit mode split**. When a user opens the profile screen and data already exists, they see a clean read-only view. They tap "Edit Profile" to switch to the form.
 
-#### 4a. Add imports and types
+**This builds directly on Week 8.** The Zod schema and React Hook Form setup are unchanged. We're adding three things on top: persistence via `storage`, a loading state, and a view/edit mode split.
+
+#### 4a. Update imports
 
 ```tsx
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useForm, Controller } from "react-hook-form";
+import { theme } from "../../../styles/theme";
 import * as storage from "../../../lib/storage";
 import { STORAGE_KEYS } from "../../../lib/storage";
-
-type ProfileData = {
-  firstName: string;
-  lastName: string;
-  email: string;
-  studentId: string;
-  phone: string;
-};
 ```
 
-Notice: no `Alert` or `router` imports needed anymore. The save action switches to view mode instead of showing an alert and navigating away. The user sees their data displayed — that **is** the confirmation.
+Removed from Week 8: `Alert`, `router` — no longer needed. The save action switches to view mode instead of showing an alert and navigating away. The user sees their data displayed — that **is** the confirmation.
 
-`ProfileData` defines the shape of what we save to storage. This ensures type safety — when we read from storage, TypeScript knows exactly what fields to expect.
+Added for Week 9: `useEffect`, `useState`, `ActivityIndicator` from React/React Native, and the storage utility.
 
-#### 4b. Add new state variables
+#### 4b. Keep the Zod schema — unchanged from Week 8
 
 ```tsx
-  const [isLoading, setIsLoading] = useState(true);
-  const [isEditing, setIsEditing] = useState(false);
-  const [hasSavedData, setHasSavedData] = useState(false);
+const profileSchema = z.object({
+  firstName: z.string().trim().min(2, "First name must be at least 2 characters."),
+  lastName:  z.string().trim().min(2, "Last name must be at least 2 characters."),
+  email:     z.string().trim().email("Please enter a valid email address."),
+  studentId: z.string().trim().length(9, "Student ID must be exactly 9 characters."),
+  phone:     z.string().refine(
+    (val) => val.replace(/\D/g, "").length >= 10,
+    "Phone number must have at least 10 digits."
+  ),
+});
+
+type ProfileForm = z.infer<typeof profileSchema>;
+```
+
+`ProfileForm` (inferred from Zod) is also the type we pass to `storage.get<ProfileForm>()`. The schema serves double duty — validation rules **and** the TypeScript type for what we save/load.
+
+#### 4c. Add new state + expand useForm
+
+```tsx
+const [isLoading, setIsLoading]     = useState(true);
+const [isEditing, setIsEditing]     = useState(false);
+const [hasSavedData, setHasSavedData] = useState(false);
+
+const {
+  control,
+  handleSubmit,
+  reset,         // ← NEW: pre-fills the form with saved data
+  watch,         // ← NEW: reads current field values for view mode + isFormFilled
+  formState: { errors },
+} = useForm<ProfileForm>({
+  resolver: zodResolver(profileSchema),
+  defaultValues: { firstName: "", lastName: "", email: "", studentId: "", phone: "" },
+  mode: "onSubmit",
+});
+
+// Track field values to enable/disable the Save button
+const watchedValues = watch();
+const isFormFilled = Object.values(watchedValues).every((v) => v.length > 0);
 ```
 
 Three new pieces of state:
 
 | State | Purpose |
 |-------|---------|
-| `isLoading` | Shows spinner while loading from storage (same as notifications) |
-| `isEditing` | Controls which mode is displayed — `false` = view, `true` = edit |
-| `hasSavedData` | Tracks if a profile has been saved before — controls whether Cancel button appears |
+| `isLoading` | Shows spinner while loading from storage |
+| `isEditing` | `false` = view card, `true` = edit form |
+| `hasSavedData` | Controls whether Cancel button appears |
 
-#### 4c. Load data and decide the initial mode
+Two new RHF values:
+- **`reset(data)`** — replaces all form field values at once. Used to pre-fill the form when loading saved data, and to restore saved values on Cancel.
+- **`watch()`** — returns the current value of every field. Used to read values for the view mode card, and to compute `isFormFilled`.
+
+#### 4d. Load data and decide the initial mode
 
 ```tsx
-  useEffect(() => {
-    async function loadProfile() {
-      const saved = await storage.get<ProfileData>(STORAGE_KEYS.PROFILE);
-      if (saved !== null) {
-        setFirstName(saved.firstName);
-        setLastName(saved.lastName);
-        setEmail(saved.email);
-        setStudentId(saved.studentId);
-        setPhone(saved.phone);
-        setHasSavedData(true);
-      } else {
-        setIsEditing(true);
-      }
-      setIsLoading(false);
+useEffect(() => {
+  const loadProfile = async () => {
+    const saved = await storage.get<ProfileForm>(STORAGE_KEYS.PROFILE);
+    if (saved !== null) {
+      reset(saved); // pre-fill all form fields in one call
+      setHasSavedData(true);
+    } else {
+      setIsEditing(true); // first visit — show the form immediately
     }
-    loadProfile();
-  }, []);
+    setIsLoading(false);
+  };
+  loadProfile();
+}, []);
 ```
 
-**What's different from notifications:** The `useEffect` now decides the initial mode. If saved data exists, the component stays in view mode (`isEditing` defaults to `false`) and sets `hasSavedData` to `true`. If no data exists (first visit), it switches to edit mode so the user sees the form right away.
+**Week 8 vs Week 9:** In Week 8, `defaultValues` were all empty strings. Now on return visits, we call `reset(saved)` to replace those defaults with the saved data. `reset()` is the React Hook Form equivalent of setting every field's state at once — one call instead of five.
 
-#### 4d. Update handleSubmit — save and switch to view mode
+**Why `if (saved !== null)`?** The first time the app runs, nothing is in storage — `get()` returns `null`. We keep the empty defaults and switch to edit mode.
+
+#### 4e. Update onSubmit — save and switch to view mode
 
 ```tsx
-  async function handleSubmit() {
-    if (!validate()) return;
-
-    const profileData: ProfileData = {
-      firstName, lastName, email, studentId, phone,
-    };
-    await storage.set(STORAGE_KEYS.PROFILE, profileData);
-
-    setErrors({});
-    setHasSavedData(true);
-    setIsEditing(false);  // Switch to view mode — the view IS the confirmation
-  }
+// RHF calls onSubmit only after Zod validation passes
+const onSubmit = async (data: ProfileForm) => {
+  await storage.set(STORAGE_KEYS.PROFILE, data);
+  setHasSavedData(true);
+  setIsEditing(false); // switch to view mode — the view IS the confirmation
+};
 ```
 
 **Changes from Week 8:**
-- `handleSubmit` is now `async` (because `storage.set` returns a Promise)
-- After validation passes, we save to storage
-- Instead of an alert + navigate back, we clear errors and switch to view mode
+- `onSubmit` is now `async` (because `storage.set` returns a Promise)
+- Instead of `Alert.alert(...)` + `router.back()`, we save to storage and switch to view mode
 - `setHasSavedData(true)` ensures the Cancel button appears if they edit again
 
-#### 4e. Add handleCancel — discard changes
+The Zod validation still runs exactly as before — `handleSubmit(onSubmit)` only calls `onSubmit` if the schema passes. Nothing changed there.
+
+#### 4f. Add handleCancel — discard changes
 
 ```tsx
-  async function handleCancel() {
-    const saved = await storage.get<ProfileData>(STORAGE_KEYS.PROFILE);
-    if (saved !== null) {
-      setFirstName(saved.firstName);
-      setLastName(saved.lastName);
-      setEmail(saved.email);
-      setStudentId(saved.studentId);
-      setPhone(saved.phone);
-    }
-    setErrors({});
-    setIsEditing(false);
+const handleCancel = async () => {
+  const saved = await storage.get<ProfileForm>(STORAGE_KEYS.PROFILE);
+  if (saved !== null) {
+    reset(saved); // restore saved values, discarding any in-progress edits
   }
+  setIsEditing(false);
+};
 ```
 
-Cancel reloads the saved data from storage (discarding any edits the user made to the form fields), clears any validation errors, and switches back to view mode. This only appears when `hasSavedData` is `true` — if the user hasn't saved anything yet, there's nothing to cancel back to.
+Cancel re-reads from storage and calls `reset(saved)` to restore the previously saved values — discarding any edits the user made to the form fields. Then switches back to view mode. Only appears when `hasSavedData` is `true`.
 
-#### 4f. Render view mode
+#### 4g. Add loading spinner
 
 ```tsx
-  // VIEW MODE — show saved profile data
-  if (!isEditing) {
-    return (
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-        <Text style={styles.h1}>My Profile</Text>
+if (isLoading) {
+  return (
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color={theme.colors.primary} />
+    </View>
+  );
+}
+```
 
-        <View style={styles.profileCard}>
-          <View style={styles.profileRow}>
-            <Text style={styles.profileLabel}>First Name</Text>
-            <Text style={styles.profileValue}>{firstName}</Text>
-          </View>
-          <View style={styles.divider} />
-          {/* ... same pattern for lastName, email, studentId, phone ... */}
+This goes before the view/edit mode checks. When `isLoading` is `true`, the component returns early with just a spinner.
+
+#### 4h. Render view mode
+
+```tsx
+// VIEW MODE — show saved profile as a read-only card
+if (!isEditing) {
+  const values = watch(); // reads current form values (set by reset() on load)
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <Text style={styles.h1}>My Profile</Text>
+
+      <View style={styles.profileCard}>
+        <View style={styles.profileRow}>
+          <Text style={styles.profileLabel}>First Name</Text>
+          <Text style={styles.profileValue}>{values.firstName}</Text>
         </View>
+        <View style={styles.divider} />
+        {/* ... same pattern for lastName, email, studentId, phone ... */}
+      </View>
 
-        <Pressable style={styles.button} onPress={() => setIsEditing(true)}>
-          <Text style={styles.buttonText}>Edit Profile</Text>
-        </Pressable>
-      </ScrollView>
-    );
-  }
+      <Pressable style={styles.button} onPress={() => setIsEditing(true)}>
+        <Text style={styles.buttonText}>Edit Profile</Text>
+      </Pressable>
+    </ScrollView>
+  );
+}
 ```
 
-View mode displays each field as a label + value pair inside a card. The card uses `overflow: "hidden"` so the `divider` lines don't bleed outside the rounded corners. The "Edit Profile" button at the bottom switches to edit mode.
+`watch()` returns the current form values — which after `reset(saved)` are the saved data. View mode reads from those values instead of needing separate state.
 
 **New styles for view mode:**
 
 ```tsx
-  profileCard: {
-    backgroundColor: theme.colors.card,
-    borderRadius: theme.radius.card,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    overflow: "hidden",
-  },
-  profileRow: { padding: 16 },
-  profileLabel: { fontSize: 13, color: theme.colors.muted, marginBottom: 4 },
-  profileValue: { fontSize: 16, color: theme.colors.text, fontWeight: "500" },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border },
+profileCard: {
+  backgroundColor: theme.colors.card,
+  borderRadius: theme.radius.card,
+  borderWidth: 1,
+  borderColor: theme.colors.border,
+  overflow: "hidden",
+},
+profileRow: { padding: 16 },
+profileLabel: { fontSize: 13, color: theme.colors.muted, marginBottom: 4 },
+profileValue: { fontSize: 16, color: theme.colors.text, fontWeight: "500" },
+divider: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border },
 ```
 
-#### 4g. Update edit mode buttons — Save + Cancel
+#### 4i. Edit mode — Controller fields unchanged, buttons updated
 
-When the user has saved data before (`hasSavedData`), show both Cancel and Save side by side. When it's a fresh profile (first visit), show only Save.
+The five `Controller` fields are identical to Week 8. The only change is the buttons:
 
 ```tsx
-  {hasSavedData ? (
-    <View style={styles.buttonRow}>
-      <Pressable style={styles.cancelButton} onPress={handleCancel}>
-        <Text style={styles.cancelButtonText}>Cancel</Text>
-      </Pressable>
-      <Pressable
-        style={[styles.saveButton, !isFormFilled && styles.buttonDisabled]}
-        onPress={handleSubmit}
-        disabled={!isFormFilled}
-      >
-        <Text style={styles.buttonText}>Save Profile</Text>
-      </Pressable>
-    </View>
-  ) : (
+{hasSavedData ? (
+  <View style={styles.buttonRow}>
+    <Pressable style={styles.cancelButton} onPress={handleCancel}>
+      <Text style={styles.cancelButtonText}>Cancel</Text>
+    </Pressable>
     <Pressable
-      style={[styles.button, !isFormFilled && styles.buttonDisabled]}
-      onPress={handleSubmit}
+      style={[styles.saveButton, !isFormFilled && styles.buttonDisabled]}
+      onPress={handleSubmit(onSubmit)}
       disabled={!isFormFilled}
     >
       <Text style={styles.buttonText}>Save Profile</Text>
     </Pressable>
-  )}
+  </View>
+) : (
+  <Pressable
+    style={[styles.button, !isFormFilled && styles.buttonDisabled]}
+    onPress={handleSubmit(onSubmit)}
+    disabled={!isFormFilled}
+  >
+    <Text style={styles.buttonText}>Save Profile</Text>
+  </Pressable>
+)}
 ```
 
-**New styles for the button row:**
-
-```tsx
-  buttonRow: { flexDirection: "row", gap: 12, marginTop: 28 },
-  cancelButton: {
-    flex: 1, borderRadius: theme.radius.input, padding: 16, alignItems: "center",
-    borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.card,
-  },
-  cancelButtonText: { color: theme.colors.text, fontSize: 16, fontWeight: "700" },
-  saveButton: {
-    flex: 1, backgroundColor: theme.colors.primary, borderRadius: theme.radius.input,
-    padding: 16, alignItems: "center",
-  },
-```
-
-#### 4h. Add loading spinner
-
-```tsx
-  if (isLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-      </View>
-    );
-  }
-```
-
-Add a `loadingContainer` style for centering the spinner:
-
-```tsx
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: theme.colors.bg,
-  },
-```
+`handleSubmit(onSubmit)` is exactly as in Week 8 — RHF runs Zod, and only calls `onSubmit` if validation passes. The Save button is disabled when any field is empty (`isFormFilled`), giving early visual feedback before the user even taps.
 
 #### The complete screen flow
 
 ```
 First visit (no saved data):
-  Loading → Edit Mode (form) → Save → View Mode
+  Loading → Edit Mode (blank form, Zod validates on submit) → Save → View Mode
 
 Return visit (data exists):
-  Loading → View Mode (card) → Edit → Edit Mode (pre-filled form) → Save → View Mode
-                                                                   → Cancel → View Mode
+  Loading → View Mode (card) → Edit → Edit Mode (pre-filled via reset()) → Save → View Mode
+                                                                          → Cancel → View Mode
 ```
 
 ---
@@ -623,13 +635,13 @@ Return visit (data exists):
 ```tsx
 // ❌ WRONG — runs on EVERY render (infinite loop!)
 useEffect(() => {
-  async function load() { ... }
+  const load = async () => { ... };
   load();
 });
 
 // ✅ CORRECT — runs ONCE on mount
 useEffect(() => {
-  async function load() { ... }
+  const load = async () => { ... };
   load();
 }, []);  // ← Don't forget this!
 ```
@@ -644,11 +656,11 @@ useEffect(async () => {
   const data = await storage.get("profile");
 }, []);
 
-// ✅ CORRECT — define async function inside
+// ✅ CORRECT — define async arrow function inside, then call it
 useEffect(() => {
-  async function loadProfile() {
+  const loadProfile = async () => {
     const data = await storage.get("profile");
-  }
+  };
   loadProfile();
 }, []);
 ```
@@ -659,17 +671,17 @@ React expects `useEffect` to return either nothing or a cleanup function. An asy
 
 ```tsx
 // ❌ WRONG — crashes if nothing was saved yet
-const saved = await storage.get<ProfileData>(STORAGE_KEYS.PROFILE);
-setFirstName(saved.firstName);  // TypeError: Cannot read property of null
+const saved = await storage.get<ProfileForm>(STORAGE_KEYS.PROFILE);
+reset(saved);  // TypeError: reset(null) — null is not a valid form object
 
 // ✅ CORRECT — check first
-const saved = await storage.get<ProfileData>(STORAGE_KEYS.PROFILE);
+const saved = await storage.get<ProfileForm>(STORAGE_KEYS.PROFILE);
 if (saved !== null) {
-  setFirstName(saved.firstName);
+  reset(saved); // safe — we know it's a ProfileForm object
 }
 ```
 
-The first time a user opens the app, nothing is in storage. `get()` returns `null`. Trying to access `.firstName` on `null` crashes the app.
+The first time a user opens the app, nothing is in storage. `get()` returns `null`. Passing `null` to `reset()` would crash. Always null-check before using the loaded value.
 
 ### 4. Forgetting to stringify/parse (if not using the utility)
 
@@ -744,4 +756,4 @@ Add a "Dark Mode" toggle to the Settings screen that persists across app restart
 
 ---
 
-*This guide builds on the form concepts from Week 8. The form validation logic is unchanged — we're only adding persistence on top of it. Review `WEEK8_FORMS.md` if you need a refresher on controlled inputs or validation.*
+*This guide builds directly on Week 8. The Zod schema, `zodResolver`, `useForm`, and `Controller` fields are all unchanged — we added `reset`, `watch`, persistence via `storage`, and the view/edit mode split on top. Review `WEEK8_FORMS.md` if you need a refresher on the React Hook Form + Zod setup.*

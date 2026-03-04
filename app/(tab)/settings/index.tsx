@@ -8,29 +8,34 @@ import { theme } from "../../../styles/theme";
 import * as storage from "../../../lib/storage";
 import { STORAGE_KEYS } from "../../../lib/storage";
 
-export default function Settings() {
+const Settings = () => {
   const [notifications, setNotifications] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
 
   // Load saved notification preference on mount
   useEffect(() => {
-    async function loadNotifications() {
+    // Define an async function to load the value since useEffect can't be async
+    const loadNotifications = async () => {
+      // Try to load saved value from storage, if it exists
       const saved = await storage.get<boolean>(STORAGE_KEYS.NOTIFICATIONS);
       if (saved !== null) {
+        // If we have a saved value, use it to set the state
         setNotifications(saved);
       }
       setIsLoading(false);
-    }
+    };
+    // Call the async function to load notifications
     loadNotifications();
   }, []);
 
   // Save notification preference when toggled
-  async function handleToggle(value: boolean) {
+  const handleToggle = async (value: boolean) => {
     setNotifications(value);
     await storage.set(STORAGE_KEYS.NOTIFICATIONS, value);
-  }
+  };
 
   if (isLoading) {
+    // Show a loading indicator while we load the saved preference
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -46,6 +51,7 @@ export default function Settings() {
         title="Notifications"
         subtitle="Enable app notifications"
         right={
+          // The Switch component calls handleToggle when toggled, which updates state and saves the new value to storage
           <Switch value={notifications} onValueChange={handleToggle} />
         }
       />
@@ -65,7 +71,9 @@ export default function Settings() {
       </Pressable>
     </View>
   );
-}
+};
+
+export default Settings;
 
 const styles = StyleSheet.create({
   container: {
